@@ -1,0 +1,9 @@
+C:\Users\gazto\Source\Repos\FAToRegex\LexContext\bin\Debug\netstandard2.0\LexContext.deps.json
+C:\Users\gazto\Source\Repos\FAToRegex\LexContext\bin\Debug\netstandard2.0\LexContext.dll
+C:\Users\gazto\Source\Repos\FAToRegex\LexContext\bin\Debug\netstandard2.0\LexContext.pdb
+C:\Users\gazto\Source\Repos\FAToRegex\LexContext\obj\Debug\netstandard2.0\LexContext.GeneratedMSBuildEditorConfig.editorconfig
+C:\Users\gazto\Source\Repos\FAToRegex\LexContext\obj\Debug\netstandard2.0\LexContext.AssemblyInfoInputs.cache
+C:\Users\gazto\Source\Repos\FAToRegex\LexContext\obj\Debug\netstandard2.0\LexContext.AssemblyInfo.cs
+C:\Users\gazto\Source\Repos\FAToRegex\LexContext\obj\Debug\netstandard2.0\LexContext.csproj.CoreCompileInputs.cache
+C:\Users\gazto\Source\Repos\FAToRegex\LexContext\obj\Debug\netstandard2.0\LexContext.dll
+C:\Users\gazto\Source\Repos\FAToRegex\LexContext\obj\Debug\netstandard2.0\LexContext.pdb

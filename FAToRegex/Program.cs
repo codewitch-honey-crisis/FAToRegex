@@ -21,9 +21,43 @@ namespace FAToRegex {
 				
 				return result;
             }
+			public IDictionary<EFA,StringBuilder> FillInputTransitionsGroupedByState(IDictionary<EFA, StringBuilder> result = null) {
+				if(result == null) {
+					result = new Dictionary<EFA, StringBuilder>();
+				}
+				var h = new HashSet<EFA>();
+				for(var i = 0; i < Transitions.Count;++i) {
+					var t = Transitions[i];
+					StringBuilder exp;
+					if(!result.TryGetValue(t.Value,out exp)) {
+						var sb = new StringBuilder(t.Key.ToString());
+						result.Add(t.Value, sb);
+                    } else {
+						if(!h.Add(t.Value)) {
+							exp.Remove(exp.Length - 1, 1);
+                        } else {
+							exp.Insert(0, "(");
+                        }
+						exp.Append("|");
+						exp.Append(t.Key.ToString());
+						exp.Append(")");
+					}
+                }
+				return result;
+            }
+			public int IndexOfTransition(string value) {
+				var result = 0;
+				foreach(var t in Transitions) {
+					if(t.ToString().Equals(value,StringComparison.InvariantCulture)) {
+						return result;
+                    }
+					++result;
+                }
+				return -1;
+            }
 		}
         static void Main(string[] args) {
-			var exp = "abcd(ef)*g";
+			var exp = "(abcd|12(3|55|77|99)4)(ef)*g";
 			Console.WriteLine(exp);
 			var fa = FFA.Parse(exp);
             Console.WriteLine(fa.ToRegex());
@@ -150,13 +184,15 @@ namespace FAToRegex {
 			builder.Append('-');
 			builder.Append(EscapeCodepoint(last));
 		}
-		static IList<KeyValuePair<EFA,string>> GetIncoming(IEnumerable<EFA> closure, EFA efa) {
+		static IList<KeyValuePair<EFA,string>> GetIncoming(IEnumerable<EFA> closure, EFA efa,bool includeLoops=true) {
 			var result = new List<KeyValuePair<EFA, string>>();
 			foreach (var cfa in closure) {
 				foreach(var t in cfa.Transitions) {
-					if(t.Value==efa) {
-						result.Add(new KeyValuePair<EFA, string>(cfa, t.Key.ToString()));
-                    }
+					if (includeLoops || t.Value != cfa) {
+						if (t.Value == efa) {
+							result.Add(new KeyValuePair<EFA, string>(cfa, t.Key.ToString()));
+						}
+					}
                 }
             }
 			return result;
@@ -260,25 +296,69 @@ namespace FAToRegex {
 						efas = efas[0].FillClosure();
 					} else
 						done = false;
+					// combine the unions
 					innerDone = false;
 					while (!innerDone) {
 						innerDone = true;
 						foreach (var e in efas) {
-							if (e.Transitions.Count == 1) {
-								var its = GetIncoming(efas, e);
-								if (its.Count > 1) {
-									foreach (var it in its) {
-
-									}
-								}
-							}
+							var rgs=e.FillInputTransitionsGroupedByState();
+							if(rgs.Count!=e.Transitions.Count) {
+								e.Transitions.Clear();
+								foreach(var rg in rgs) {
+									e.Transitions.Add(new KeyValuePair<StringBuilder, EFA>(rg.Value, rg.Key));
+                                }
+								innerDone = false;
+								efas = efas[0].FillClosure();
+                            }
 						}
 					}
+					if (innerDone) {
+						efas = efas[0].FillClosure();
+					} else
+						done = false;
+
+					// remove the loops
+					innerDone = false;
+					while (!innerDone) {
+						innerDone = true;
+						foreach (var e in efas) {
+							for(var ii=0;ii< e.Transitions.Count;++ii) {
+								var t = e.Transitions[ii];
+								if(t.Value==e) {
+									// this is a loop
+									if (t.Key.Length > 1) {
+										t.Key.Insert(0, "(");
+										t.Key.Append(")");
+									}
+									t.Key.Append("*");
+									// prepend it to all the other transitions 
+									for (var iii = 0; iii < e.Transitions.Count; ++iii) {
+										if (ii != iii) {
+											var tt = e.Transitions[iii];
+											if (tt.Value != e) {
+												tt.Key.Insert(0, t.Key.ToString());
+
+											}
+										}
+									}
+									e.Transitions.RemoveAt(ii);
+									--ii;
+									innerDone = false;
+									efas = efas[0].FillClosure();
+								}
+									
+                            }
+						}
+					}
+					if (innerDone) {
+						efas = efas[0].FillClosure();
+					} else
+						done = false;
 				}
 			}
 			var cefa = efas[0].FillClosure();
 			DumpEfas(cefa);
-			return "";
+			return efas[0].Transitions[0].Key.ToString();
         }
     }
 }
