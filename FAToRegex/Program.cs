@@ -4,14 +4,16 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using F;
+using LC;
+
 namespace FAToRegex {
     static class Program {
-        class EFA {
+        sealed class _EFA {
             public bool IsAccepting;
             public int Accept;
-            public List<KeyValuePair<StringBuilder, EFA>> Transitions { get; } = new List<KeyValuePair<StringBuilder, EFA>>();
-			public IList<EFA> FillClosure(IList<EFA> result = null) {
-				if (result == null) result = new List<EFA>();
+            public List<KeyValuePair<StringBuilder, _EFA>> Transitions { get; } = new List<KeyValuePair<StringBuilder, _EFA>>();
+			public IList<_EFA> FillClosure(IList<_EFA> result = null) {
+				if (result == null) result = new List<_EFA>();
 				if (result.Contains(this))
 					return result;
 				result.Add(this);
@@ -21,11 +23,24 @@ namespace FAToRegex {
 				
 				return result;
             }
-			public IDictionary<EFA,StringBuilder> FillInputTransitionsGroupedByState(IDictionary<EFA, StringBuilder> result = null) {
-				if(result == null) {
-					result = new Dictionary<EFA, StringBuilder>();
+			public static IList<KeyValuePair<_EFA, string>> GetIncomingTransitions(IEnumerable<_EFA> closure, _EFA efa, bool includeLoops = true) {
+				var result = new List<KeyValuePair<_EFA, string>>();
+				foreach (var cfa in closure) {
+					foreach (var t in cfa.Transitions) {
+						if (includeLoops || t.Value != cfa) {
+							if (t.Value == efa) {
+								result.Add(new KeyValuePair<_EFA, string>(cfa, t.Key.ToString()));
+							}
+						}
+					}
 				}
-				var h = new HashSet<EFA>();
+				return result;
+			}
+			public IDictionary<_EFA,StringBuilder> FillInputTransitionsGroupedByState(IDictionary<_EFA, StringBuilder> result = null) {
+				if(result == null) {
+					result = new Dictionary<_EFA, StringBuilder>();
+				}
+				var h = new HashSet<_EFA>();
 				for(var i = 0; i < Transitions.Count;++i) {
 					var t = Transitions[i];
 					StringBuilder exp;
@@ -57,12 +72,27 @@ namespace FAToRegex {
             }
 		}
         static void Main(string[] args) {
-			var exp = "(abcd|12(3|55|77|99)4)(ef)*g";
+			var exp = "foo|(bar)+|baz";
 			Console.WriteLine(exp);
 			var fa = FFA.Parse(exp);
-            Console.WriteLine(fa.ToRegex());
-        }
-		static void DumpEfas(IList<EFA> efas) {
+            Console.WriteLine(fa);
+			Console.WriteLine("IsMatch(\"foo\") = {0}",fa.IsMatch("foo"));
+			Console.WriteLine("IsMatch(dfa, \"barbar\") = {0}", FFA.IsMatch(fa.ToDfaTable(),"barbar"));
+			var srch = "abcde foo fghij barbar klmnop baz";
+			var lc = LexContext.Create(srch);
+			Console.WriteLine("Search(\"{0}\")",srch);
+			var pos = 0L;
+			while (-1<(pos=fa.Search(lc))) {
+				Console.WriteLine("\t{0} @ {1}", lc.GetCapture(), pos);
+            }
+			lc = LexContext.Create(srch);
+			Console.WriteLine("Search(dfa, \"{0}\")", srch);
+			pos = 0L;
+			while (-1 < (pos = FFA.Search(fa.ToDfaTable(), lc))) {
+				Console.WriteLine("\t{0} @ {1}", lc.GetCapture(), pos);
+			}
+		}
+		static void DumpEfas(IList<_EFA> efas) {
 			var i = 0;
 			foreach (var e in efas) {
 				Console.WriteLine("{0}q{1}:", e.IsAccepting ? "*" : "", i);
@@ -123,7 +153,7 @@ namespace FAToRegex {
 			}
 			return builder.ToString();
         }
-		static KeyValuePair<int, int>[] ToPairs(int[] packedRanges) {
+		static KeyValuePair<int, int>[] _ToPairs(int[] packedRanges) {
 			var result = new KeyValuePair<int, int>[packedRanges.Length / 2];
 			for (var i = 0; i < result.Length; ++i) {
 				var j = i * 2;
@@ -131,7 +161,7 @@ namespace FAToRegex {
 			}
 			return result;
 		}
-		static IEnumerable<KeyValuePair<int, int>> NotRanges(IEnumerable<KeyValuePair<int, int>> ranges) {
+		static IEnumerable<KeyValuePair<int, int>> _NotRanges(IEnumerable<KeyValuePair<int, int>> ranges) {
 			// expects ranges to be normalized
 			var last = 0x10ffff;
 			using (var e = ranges.GetEnumerator()) {
@@ -161,7 +191,7 @@ namespace FAToRegex {
 
 			}
 		}
-		static int[] FromPairs(IList<KeyValuePair<int, int>> pairs) {
+		static int[] _FromPairs(IList<KeyValuePair<int, int>> pairs) {
 			var result = new int[pairs.Count * 2];
 			for (int ic = pairs.Count, i = 0; i < ic; ++i) {
 				var pair = pairs[i];
@@ -171,7 +201,7 @@ namespace FAToRegex {
 			}
 			return result;
 		}
-		static void AppendRangeTo(StringBuilder builder, int[] ranges, int index) {
+		static void _AppendRangeTo(StringBuilder builder, int[] ranges, int index) {
 			var first = ranges[index];
 			var last = ranges[index + 1];
 			builder.Append(EscapeCodepoint(first));
@@ -184,22 +214,10 @@ namespace FAToRegex {
 			builder.Append('-');
 			builder.Append(EscapeCodepoint(last));
 		}
-		static IList<KeyValuePair<EFA,string>> GetIncoming(IEnumerable<EFA> closure, EFA efa,bool includeLoops=true) {
-			var result = new List<KeyValuePair<EFA, string>>();
-			foreach (var cfa in closure) {
-				foreach(var t in cfa.Transitions) {
-					if (includeLoops || t.Value != cfa) {
-						if (t.Value == efa) {
-							result.Add(new KeyValuePair<EFA, string>(cfa, t.Key.ToString()));
-						}
-					}
-                }
-            }
-			return result;
-        }
+		
 		static string ToRegex(this FFA fa) {
             var closure = fa.FillClosure();
-            IList<EFA> efas = new List<EFA>(closure.Count+1);
+            IList<_EFA> efas = new List<_EFA>(closure.Count+1);
             var i = 0;
 			while(i<=closure.Count) {
 				efas.Add(null);
@@ -207,10 +225,10 @@ namespace FAToRegex {
             }
 			i = 0;
             foreach(var cfa in closure) {
-                efas[i] = new EFA();
+                efas[i] = new _EFA();
                 ++i;
             }
-            var final = new EFA();
+            var final = new _EFA();
             final.IsAccepting = true;
             final.Accept = 0;
             efas[i] = final;
@@ -218,14 +236,14 @@ namespace FAToRegex {
                 var e = efas[i];
                 var c = closure[i];
                 if(c.IsAccepting) {
-                    e.Transitions.Add(new KeyValuePair<StringBuilder, EFA>(new StringBuilder(), final));
+                    e.Transitions.Add(new KeyValuePair<StringBuilder, _EFA>(new StringBuilder(), final));
                 }
 				var rngGrps = c.FillInputTransitionRangesGroupedByState();
 				foreach (var rngGrp in rngGrps) {
 					var tto = efas[closure.IndexOf(rngGrp.Key)];
 					var sb = new StringBuilder();
-					IList<KeyValuePair<int, int>> rngs = ToPairs(rngGrp.Value);
-					var nrngs = new List<KeyValuePair<int, int>>(NotRanges(rngs));
+					IList<KeyValuePair<int, int>> rngs = _ToPairs(rngGrp.Value);
+					var nrngs = new List<KeyValuePair<int, int>>(_NotRanges(rngs));
 					var isNot = false;
 					if (nrngs.Count < rngs.Count || (nrngs.Count == rngs.Count && 0x10ffff == rngs[rngs.Count - 1].Value)) {
 						isNot = true;
@@ -236,15 +254,15 @@ namespace FAToRegex {
 						}
 						rngs = nrngs;
 					}
-					var rpairs = FromPairs(rngs);
+					var rpairs = _FromPairs(rngs);
 					for (var r = 0; r < rpairs.Length; r += 2) {
-						AppendRangeTo(sb, rpairs, r);
+						_AppendRangeTo(sb, rpairs, r);
 					}
 					if (isNot || sb.Length != 1 || (char.IsWhiteSpace(sb.ToString(), 0))) {
 						sb.Insert(0,'[');
 						sb.Append(']');
 					}
-					e.Transitions.Add(new KeyValuePair<StringBuilder, EFA>(sb, tto));
+					e.Transitions.Add(new KeyValuePair<StringBuilder, _EFA>(sb, tto));
 				}
             }
 			i = 0;
@@ -256,7 +274,7 @@ namespace FAToRegex {
 					innerDone = true;
 					foreach (var e in efas) {
 						if (e.Transitions.Count == 1) {
-							var its = GetIncoming(efas, e);
+							var its = _EFA.GetIncomingTransitions(efas, e);
 							if (its.Count == 1 && its[0].Key.Transitions.Count == 1) {
 								// is a loop?
 								if (e.Transitions[0].Value == its[0].Key) {
@@ -267,7 +285,7 @@ namespace FAToRegex {
 										e.Transitions[0].Key.Append(")*");
 									}
 								} else {
-									its[0].Key.Transitions[0] = new KeyValuePair<StringBuilder, EFA>(its[0].Key.Transitions[0].Key, e.Transitions[0].Value);
+									its[0].Key.Transitions[0] = new KeyValuePair<StringBuilder, _EFA>(its[0].Key.Transitions[0].Key, e.Transitions[0].Value);
 									its[0].Key.Transitions[0].Key.Append(e.Transitions[0].Key.ToString());
 								}
 								innerDone = false;
@@ -281,7 +299,7 @@ namespace FAToRegex {
 										// no
 										for (var ii = 0; ii < it.Key.Transitions.Count; ++ii) {
 											if (it.Value == it.Key.Transitions[ii].Key.ToString()) {
-												it.Key.Transitions[ii] = new KeyValuePair<StringBuilder, EFA>(it.Key.Transitions[ii].Key, e.Transitions[0].Value);
+												it.Key.Transitions[ii] = new KeyValuePair<StringBuilder, _EFA>(it.Key.Transitions[ii].Key, e.Transitions[0].Value);
 												it.Key.Transitions[ii].Key.Append(e.Transitions[0].Key.ToString());
 												innerDone = false;
 												efas = efas[0].FillClosure();
@@ -305,7 +323,7 @@ namespace FAToRegex {
 							if(rgs.Count!=e.Transitions.Count) {
 								e.Transitions.Clear();
 								foreach(var rg in rgs) {
-									e.Transitions.Add(new KeyValuePair<StringBuilder, EFA>(rg.Value, rg.Key));
+									e.Transitions.Add(new KeyValuePair<StringBuilder, _EFA>(rg.Value, rg.Key));
                                 }
 								innerDone = false;
 								efas = efas[0].FillClosure();

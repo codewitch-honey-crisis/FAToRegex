@@ -84,12 +84,12 @@ namespace F
 #endif
 	partial class FFA
 	{
-		public bool IsDeterministic = true;
-		public bool IsAccepting = false;
-		public int AcceptSymbol = -1;
-		public int Tag = 0;
+		public bool IsDeterministic { get; private set; } = true;
+		public bool IsAccepting { get; set; } = false;
+		public int AcceptSymbol { get; set; } = 0;
+		public int Tag { get; set; } = 0;
 		public readonly IList<FFATransition> Transitions = new List<FFATransition>();
-		public FFA(bool isAccepting, int acceptSymbol)
+		public FFA(bool isAccepting, int acceptSymbol = 0)
 		{
 			IsAccepting = isAccepting;
 			AcceptSymbol = acceptSymbol;
@@ -123,8 +123,6 @@ namespace F
 			}
 			return result;
 		}
-
-
 
 		public IList<FFA> FillAcceptingStates(IList<FFA> result = null)
 		{
@@ -205,7 +203,7 @@ namespace F
 			}
 			return nclosure[0];
 		}
-		public static FFA Literal(IEnumerable<int> @string, int accept = -1)
+		public static FFA Literal(IEnumerable<int> @string, int accept = 0)
 		{
 			var result = new FFA();
 			var current = result;
@@ -220,7 +218,7 @@ namespace F
 			}
 			return result;
 		}
-		public static FFA Set(IEnumerable<KeyValuePair<int, int>> ranges, int accept = -1)
+		public static FFA Set(IEnumerable<KeyValuePair<int, int>> ranges, int accept = 0)
 		{
 			var result = new FFA();
 			var final = new FFA(true, accept);
@@ -232,7 +230,7 @@ namespace F
 			return result;
 		}
 
-		public static FFA Concat(IEnumerable<FFA> exprs, int accept = -1)
+		public static FFA Concat(IEnumerable<FFA> exprs, int accept = 0)
 		{
 			FFA result = null, left = null, right = null;
 			foreach (var val in exprs)
@@ -290,7 +288,7 @@ namespace F
 				//Debug.Assert(null!= lhs.FirstAcceptingState);
 			}
 		}
-		public static FFA Or(IEnumerable<FFA> exprs, int accept = -1)
+		public static FFA Or(IEnumerable<FFA> exprs, int accept = 0)
 		{
 			var result = new FFA();
 			var final = new FFA(true, accept);
@@ -312,7 +310,7 @@ namespace F
 			}
 			return result;
 		}
-		public static FFA Optional(FFA expr, int accept = -1)
+		public static FFA Optional(FFA expr, int accept = 0)
 		{
 			var result = expr.Clone();
 			var acc = result.FillAcceptingStates();
@@ -325,7 +323,7 @@ namespace F
 			}
 			return result;
 		}
-		public static FFA Repeat(FFA expr, int minOccurs = -1, int maxOccurs = -1, int accept = -1)
+		public static FFA Repeat(FFA expr, int minOccurs = -1, int maxOccurs = -1, int accept = 0)
 		{
 			expr = expr.Clone();
 			if (minOccurs > 0 && maxOccurs > 0 && minOccurs > maxOccurs)
@@ -412,7 +410,7 @@ namespace F
 			// should never get here
 			throw new NotImplementedException();
 		}
-		public static FFA CaseInsensitive(FFA expr, int accept = -1)
+		public static FFA CaseInsensitive(FFA expr, int accept = 0)
 		{
 			var result = expr.Clone();
 			var closure = new List<FFA>();
@@ -454,7 +452,7 @@ namespace F
 			return result;
 		}
 
-		public static FFA Parse(IEnumerable<char> input, int accept = -1, int line = 1, int column = 1, long position = 0, string fileOrUrl = null)
+		public static FFA Parse(IEnumerable<char> input, int accept = 0, int line = 1, int column = 1, long position = 0, string fileOrUrl = null)
 		{
 			var lc = LexContext.Create(input);
 			lc.EnsureStarted();
@@ -462,7 +460,7 @@ namespace F
 			var result = Parse(lc, accept);
 			return result;
 		}
-		internal static FFA Parse(LexContext pc, int accept = -1)
+		internal static FFA Parse(LexContext pc, int accept = 0)
 		{
 
 			FFA result = null, next = null;
@@ -1658,7 +1656,20 @@ namespace F
 		public int[] ToDfaTable() {
 			var working = new List<int>();
 			var closure = new List<F.FFA>();
-			FillClosure(closure);
+			var fa = this;
+			fa.FillClosure(closure);
+			var isDfa = true;
+			foreach(var cfa in closure) {
+				if(!cfa.IsDeterministic) {
+					isDfa = false;
+					break;
+                }
+            }
+			if(!isDfa) {
+				fa = fa.ToDfa();
+				closure.Clear();
+				fa.FillClosure(closure);
+			}
 			var stateIndices = new int[closure.Count];
 			for (var i = 0; i < closure.Count; ++i) {
 				var cfa = closure[i];
@@ -1885,6 +1896,532 @@ namespace F
 				}
 			}
 			return result;
+		}
+		public static string EscapeCodepoint(int codepoint,StringBuilder builder = null) {
+			if(null==builder)
+				builder = new StringBuilder();
+			switch (codepoint) {
+			case '.':
+			case '[':
+			case ']':
+			case '^':
+			case '-':
+			case '\\':
+				builder.Append('\\');
+				builder.Append(char.ConvertFromUtf32(codepoint));
+				break;
+			case '\t':
+				builder.Append("\\t");
+				break;
+			case '\n':
+				builder.Append("\\n");
+				break;
+			case '\r':
+				builder.Append("\\r");
+				break;
+			case '\0':
+				builder.Append("\\0");
+				break;
+			case '\f':
+				builder.Append("\\f");
+				break;
+			case '\v':
+				builder.Append("\\v");
+				break;
+			case '\b':
+				builder.Append("\\b");
+				break;
+			default:
+				var s = char.ConvertFromUtf32(codepoint);
+				if (!char.IsLetterOrDigit(s, 0) && !char.IsSeparator(s, 0) && !char.IsPunctuation(s, 0) && !char.IsSymbol(s, 0)) {
+					if (s.Length == 1) {
+						builder.Append("\\u");
+						builder.Append(unchecked((ushort)codepoint).ToString("x4"));
+					} else {
+						builder.Append("\\U");
+						builder.Append(codepoint.ToString("x8"));
+					}
+
+				} else
+					builder.Append(s);
+				break;
+			}
+			return builder.ToString();
+		}
+		private sealed class _EFA {
+			public bool IsAccepting;
+			public int Accept;
+			public List<KeyValuePair<StringBuilder, _EFA>> Transitions { get; } = new List<KeyValuePair<StringBuilder, _EFA>>();
+			public IList<_EFA> FillClosure(IList<_EFA> result = null) {
+				if (result == null) result = new List<_EFA>();
+				if (result.Contains(this))
+					return result;
+				result.Add(this);
+				foreach (var t in Transitions) {
+					t.Value.FillClosure(result);
+				}
+
+				return result;
+			}
+			public static IList<KeyValuePair<_EFA, string>> GetIncomingTransitions(IEnumerable<_EFA> closure, _EFA efa, bool includeLoops = true) {
+				var result = new List<KeyValuePair<_EFA, string>>();
+				foreach (var cfa in closure) {
+					foreach (var t in cfa.Transitions) {
+						if (includeLoops || t.Value != cfa) {
+							if (t.Value == efa) {
+								result.Add(new KeyValuePair<_EFA, string>(cfa, t.Key.ToString()));
+							}
+						}
+					}
+				}
+				return result;
+			}
+			public IDictionary<_EFA, StringBuilder> FillInputTransitionsGroupedByState(IDictionary<_EFA, StringBuilder> result = null) {
+				if (result == null) {
+					result = new Dictionary<_EFA, StringBuilder>();
+				}
+				var h = new HashSet<_EFA>();
+				for (var i = 0; i < Transitions.Count; ++i) {
+					var t = Transitions[i];
+					StringBuilder exp;
+					if (!result.TryGetValue(t.Value, out exp)) {
+						var sb = new StringBuilder(t.Key.ToString());
+						result.Add(t.Value, sb);
+					} else {
+						if (!h.Add(t.Value)) {
+							exp.Remove(exp.Length - 1, 1);
+						} else {
+							exp.Insert(0, "(");
+						}
+						exp.Append("|");
+						exp.Append(t.Key.ToString());
+						exp.Append(")");
+					}
+				}
+				return result;
+			}
+			public int IndexOfTransition(string value) {
+				var result = 0;
+				foreach (var t in Transitions) {
+					if (t.ToString().Equals(value, StringComparison.InvariantCulture)) {
+						return result;
+					}
+					++result;
+				}
+				return -1;
+			}
+		}
+		static void _AppendRangeTo(StringBuilder builder, int[] ranges, int index) {
+			var first = ranges[index];
+			var last = ranges[index + 1];
+			EscapeCodepoint(first,builder);
+			if (0 == last.CompareTo(first)) return;
+			if (last == first + 1) // spit out 1 length ranges as two chars
+			{
+				EscapeCodepoint(last,builder);
+				return;
+			}
+			builder.Append('-');
+			EscapeCodepoint(last,builder);
+		}
+		public override string ToString() {
+			// Still somewhat untested
+			var closure = FillClosure();
+			IList<_EFA> efas = new List<_EFA>(closure.Count + 1);
+			var i = 0;
+			while (i <= closure.Count) {
+				efas.Add(null);
+				++i;
+			}
+			i = 0;
+			foreach (var cfa in closure) {
+				efas[i] = new _EFA();
+				++i;
+			}
+			var final = new _EFA();
+			final.IsAccepting = true;
+			final.Accept = 0;
+			efas[i] = final;
+			for (i = 0; i < closure.Count; ++i) {
+				var e = efas[i];
+				var c = closure[i];
+				if (c.IsAccepting) {
+					e.Transitions.Add(new KeyValuePair<StringBuilder, _EFA>(new StringBuilder(), final));
+				}
+				var rngGrps = c.FillInputTransitionRangesGroupedByState();
+				foreach (var rngGrp in rngGrps) {
+					var tto = efas[closure.IndexOf(rngGrp.Key)];
+					var sb = new StringBuilder();
+					IList<KeyValuePair<int, int>> rngs = _ToPairs(rngGrp.Value);
+					var nrngs = new List<KeyValuePair<int, int>>(_NotRanges(rngs));
+					var isNot = false;
+					if (nrngs.Count < rngs.Count || (nrngs.Count == rngs.Count && 0x10ffff == rngs[rngs.Count - 1].Value)) {
+						isNot = true;
+						if (0 != nrngs.Count) {
+							sb.Append("^");
+						} else {
+							sb.Append(".");
+						}
+						rngs = nrngs;
+					}
+					var rpairs = _FromPairs(rngs);
+					for (var r = 0; r < rpairs.Length; r += 2) {
+						_AppendRangeTo(sb, rpairs, r);
+					}
+					if (isNot || sb.Length != 1 || (char.IsWhiteSpace(sb.ToString(), 0))) {
+						sb.Insert(0, '[');
+						sb.Append(']');
+					}
+					e.Transitions.Add(new KeyValuePair<StringBuilder, _EFA>(sb, tto));
+				}
+			}
+			i = 0;
+			var done = false;
+			while (!done) {
+				done = true;
+				var innerDone = false;
+				while (!innerDone) {
+					innerDone = true;
+					foreach (var e in efas) {
+						if (e.Transitions.Count == 1) {
+							var its = _EFA.GetIncomingTransitions(efas, e);
+							if (its.Count == 1 && its[0].Key.Transitions.Count == 1) {
+								// is a loop?
+								if (e.Transitions[0].Value == its[0].Key) {
+									if (e.Transitions[0].Key.Length == 1) {
+										e.Transitions[0].Key.Append("*");
+									} else {
+										e.Transitions[0].Key.Insert(0, "(");
+										e.Transitions[0].Key.Append(")*");
+									}
+								} else {
+									its[0].Key.Transitions[0] = new KeyValuePair<StringBuilder, _EFA>(its[0].Key.Transitions[0].Key, e.Transitions[0].Value);
+									its[0].Key.Transitions[0].Key.Append(e.Transitions[0].Key.ToString());
+								}
+								innerDone = false;
+								efas = efas[0].FillClosure();
+							} else {
+								foreach (var it in its) {
+									// is it a loop?
+									if (efas.IndexOf(it.Key) >= efas.IndexOf(e)) {
+										// yes
+									} else {
+										// no
+										for (var ii = 0; ii < it.Key.Transitions.Count; ++ii) {
+											if (it.Value == it.Key.Transitions[ii].Key.ToString()) {
+												it.Key.Transitions[ii] = new KeyValuePair<StringBuilder, _EFA>(it.Key.Transitions[ii].Key, e.Transitions[0].Value);
+												it.Key.Transitions[ii].Key.Append(e.Transitions[0].Key.ToString());
+												innerDone = false;
+												efas = efas[0].FillClosure();
+											}
+										}
+									}
+								}
+							}
+						}
+					}
+					if (innerDone) {
+						efas = efas[0].FillClosure();
+					} else
+						done = false;
+					// combine the unions
+					innerDone = false;
+					while (!innerDone) {
+						innerDone = true;
+						foreach (var e in efas) {
+							var rgs = e.FillInputTransitionsGroupedByState();
+							if (rgs.Count != e.Transitions.Count) {
+								e.Transitions.Clear();
+								foreach (var rg in rgs) {
+									e.Transitions.Add(new KeyValuePair<StringBuilder, _EFA>(rg.Value, rg.Key));
+								}
+								innerDone = false;
+								efas = efas[0].FillClosure();
+							}
+						}
+					}
+					if (innerDone) {
+						efas = efas[0].FillClosure();
+					} else
+						done = false;
+
+					// remove the loops
+					innerDone = false;
+					while (!innerDone) {
+						innerDone = true;
+						foreach (var e in efas) {
+							for (var ii = 0; ii < e.Transitions.Count; ++ii) {
+								var t = e.Transitions[ii];
+								if (t.Value == e) {
+									// this is a loop
+									if (t.Key.Length > 1) {
+										t.Key.Insert(0, "(");
+										t.Key.Append(")");
+									}
+									t.Key.Append("*");
+									// prepend it to all the other transitions 
+									for (var iii = 0; iii < e.Transitions.Count; ++iii) {
+										if (ii != iii) {
+											var tt = e.Transitions[iii];
+											if (tt.Value != e) {
+												tt.Key.Insert(0, t.Key.ToString());
+
+											}
+										}
+									}
+									e.Transitions.RemoveAt(ii);
+									--ii;
+									innerDone = false;
+									efas = efas[0].FillClosure();
+								}
+
+							}
+						}
+					}
+					if (innerDone) {
+						efas = efas[0].FillClosure();
+					} else
+						done = false;
+				}
+			}
+			return efas[0].Transitions[0].Key.ToString();
+		}
+		public int FindTransitionIndex(int codepoint) {
+			for(var i = 0;i<Transitions.Count;++i) {
+				var t = Transitions[i];
+				if (t.Min > codepoint) { 
+					return -1;
+                }
+				if(t.Max>=codepoint) {
+					return i;
+                }
+            }
+			return -1;
+        }
+		public static bool HasAcceptingState(IEnumerable<FFA> states) {
+			foreach(var state in states) {
+				if (state.IsAccepting) return true;
+            }
+			return false;
+		}
+		public static IList<FFA> FillMove(IEnumerable<FFA> states, int codepoint, IList<FFA> result = null) {
+			if (result == null) result = new List<FFA>();
+			foreach(var state in states) {
+				var i = state.FindTransitionIndex(codepoint);
+				if(-1<i) {
+					var tto = state.Transitions[i].To;
+					if(!result.Contains(tto)) {
+						result.Add(tto);
+                    }
+                }
+            }
+			return result;
+        }
+		public FFA DfaMove(int codepoint) {
+			var i = FindTransitionIndex(codepoint);
+			if (-1 < i) {
+				return Transitions[i].To;
+			}
+			return null;
+		}
+		public bool IsMatch(IEnumerable<char> text) {
+			return IsMatch(LexContext.Create(text));
+        }
+		public bool IsMatch(LexContext lc) {
+			lc.EnsureStarted();
+			if(IsDeterministic) {
+				var state = this;
+				while(true) {
+					var next = state.DfaMove(lc.Current);
+					if(null==next) {
+						if (state.IsAccepting) {
+							return lc.Current == LexContext.EndOfInput;
+						}
+						return false;
+                    }
+					lc.Advance();
+					state = next;
+					if(lc.Current == LexContext.EndOfInput) {
+						return state.IsAccepting;
+                    }
+                }
+			} else {
+				IList<FFA> states = new List<FFA>();
+				states.Add(this);
+				while(true) {
+					var next = FFA.FillMove(states, lc.Current);
+					if(next.Count==0) {
+						if(HasAcceptingState(states)) {
+							return lc.Current == LexContext.EndOfInput;
+                        }
+						return false;
+                    }
+					lc.Advance();
+					states = next;
+					if (lc.Current == LexContext.EndOfInput) {
+						return HasAcceptingState(states);
+					}
+				}
+            }
+        }
+		public static bool IsMatch(int[] dfa, IEnumerable<char> text) {
+			return IsMatch(dfa, LexContext.Create(text));
+		}
+		
+		public static bool IsMatch(int[] dfa, LexContext lc) {
+			lc.EnsureStarted();
+			int si = 0;
+			while (true) {
+				var acc = dfa[si++];
+				if (lc.Current == LexContext.EndOfInput) {
+					return acc != -1;
+				}
+				var trns = dfa[si++];
+				var matched = false;
+				var ssi = si;
+				for (var i = 0; i < trns; ++i) {
+					var tto = dfa[si++];
+					var prlen = dfa[si++];
+					for (var j = 0; j < prlen; ++j) {
+						var min = dfa[si++];
+						var max = dfa[si++];
+						if (min > lc.Current) {
+							si += (prlen - (j+1)) * 2;
+							break;
+						}
+						if (max >= lc.Current) {
+							si = tto;
+							matched = true;
+							goto next_state;
+						}
+					}
+				}
+			next_state:
+				if (!matched) {
+					if (acc != -1) {
+						return lc.Current == LexContext.EndOfInput;
+					}
+					return false;
+				}
+				lc.Advance();
+				if (lc.Current == LexContext.EndOfInput) {
+					return dfa[si] != -1;
+				}
+			}
+		}
+		public long Search(LexContext lc) {
+			lc.EnsureStarted();
+			lc.ClearCapture();
+			var result = lc.Position;
+			if (IsDeterministic) {
+				while (lc.Current != LexContext.EndOfInput) {
+					var state = this;
+					while (true) {
+						var next = state.DfaMove(lc.Current);
+						if (null == next) {
+							if (state.IsAccepting && lc.CaptureBuffer.Length > 1) {
+								return result - 1;
+							}
+							lc.ClearCapture();
+							lc.Advance();
+							result = -1;
+							break;
+						}
+						if (result == -1) {
+							result = lc.Position;
+						}
+						lc.Capture();
+						lc.Advance();
+						state = next;
+						if (lc.Current == LexContext.EndOfInput) {
+							return state.IsAccepting ? result - 1 : -1;
+						}
+					}
+				}
+				return this.IsAccepting ? result - 1 : -1;
+			} else {
+				while (lc.Current != LexContext.EndOfInput) {
+					IList<FFA> states = new List<FFA>();
+					states.Add(this);
+					while (true) {
+						var next = FFA.FillMove(states, lc.Current);
+						if (next.Count == 0) {
+							if (HasAcceptingState(states) && lc.CaptureBuffer.Length > 1) {
+								return result - 1;
+							}
+							lc.ClearCapture();
+							lc.Advance();
+							result = -1;
+							break;
+						}
+						if (result == -1) {
+							result = lc.Position;
+						}
+						lc.Capture();
+						lc.Advance();
+						states = next;
+						if (lc.Current == LexContext.EndOfInput) {
+							return HasAcceptingState(states) ? result - 1 : -1;
+						}
+					}
+				}
+				return this.IsAccepting ? result - 1 : -1;
+			}
+		}
+		public static long Search(int[] dfa, LexContext lc) {
+			lc.EnsureStarted();
+			lc.ClearCapture();
+			var result = lc.Position;
+			while (lc.Current != LexContext.EndOfInput) {
+				var si = 0;
+				while (true) {
+					var acc = dfa[si++];
+					if (lc.Current == LexContext.EndOfInput) {
+						if(acc!=-1 && lc.CaptureBuffer.Length > 1) {
+							return result - 1;
+                        }
+					}
+					var trns = dfa[si++];
+					var matched = false;
+					for (var i = 0; i < trns; ++i) {
+						var tto = dfa[si++];
+						var prlen = dfa[si++];
+						for (var j = 0; j < prlen; ++j) {
+							var min = dfa[si++];
+							var max = dfa[si++];
+							if (min > lc.Current) {
+								si += (prlen - (j+1)) * 2;
+								break;
+							}
+							if (max >= lc.Current) {
+								si = tto;
+								matched = true;
+								goto next_state;
+							}
+						}
+					}
+				next_state:
+					if (!matched) {
+						if (acc != -1 && lc.CaptureBuffer.Length> 1) {
+							return result - 1;
+						}
+						lc.ClearCapture();
+						lc.Advance();
+						result = -1;
+						si = 0;
+						break;
+					}
+					if (result == -1) {
+						result = lc.Position;
+					}
+					lc.Capture();
+					lc.Advance();
+					if (lc.Current == LexContext.EndOfInput) {
+						return dfa[si]!=-1 ? result - 1 : -1;
+					}
+				}
+			}
+			return dfa[0]!=-1 ? result - 1 : -1;
 		}
 	}
 }
